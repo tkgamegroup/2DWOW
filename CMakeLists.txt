@@ -14,8 +14,6 @@ endforeach()
 
 set(FLAME_DIR "" CACHE PATH "Flame Engine Dir")
 
-add_definitions(-DFLAME_WINDOWS)
-
 if (EXISTS "${dir}/pugixml")
 	set(temp "${dir}/pugixml")
 else()
