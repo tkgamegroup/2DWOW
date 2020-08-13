@@ -1,0 +1,8 @@
+image = "character.png"
+border = 0
+
+[tiles]
+main 0,0,64,64
+smash1 64,0,64,64
+smash2 128,0,64,64
+smash3 192,0,64,64
