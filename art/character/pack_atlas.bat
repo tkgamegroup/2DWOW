@@ -1,1 +1,0 @@
-"D:/flame/bin/debug/texture_packer" -o../character.atlas

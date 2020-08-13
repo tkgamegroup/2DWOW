@@ -1,0 +1,1 @@
+"D:/flame/bin/debug/texture_packer" -o../main.atlas

@@ -8,8 +8,8 @@ App g_app;
 Window* window;
 Entity* root;
 
-graphics::ImageAtlas* atlas_character;
-uint atlas_character_id;
+graphics::ImageAtlas* atlas_main;
+uint atlas_main_id;
 
 struct Map
 {
@@ -35,21 +35,24 @@ struct Sprite
 {
 	Entity* e;
 	cElement* ce;
+	cImage* ci;
 
 	Vec2f pos = Vec2f(0.f);
 	float rotation = 0.f;
 
-	void create(const Vec2f& p)
+	void create(Entity* parent, const Vec2f& p, const Vec2f& pivot = Vec2f(0.f))
 	{
 		e = Entity::create();
 		ce = cElement::create();
-		ce->set_x(pos.x());
-		ce->set_y(pos.y());
 		ce->set_width(64.f);
 		ce->set_height(64.f);
-		ce->set_fill_color(Vec4c(255, 0, 0, 255));
+		ce->set_pivotx(pivot.x());
+		ce->set_pivoty(pivot.y());
 		e->add_component(ce);
-		map.e->add_child(e);
+		ci = cImage::create();
+		ci->set_auto_size(false);
+		e->add_component(ci);
+		parent->add_child(e);
 
 		set_pos(p);
 	}
@@ -83,26 +86,12 @@ struct Sprite
 
 struct Animation : Sprite
 {
-	cImage* ci;
-
 	int frame = -1;
 	std::vector<uint> frames;
 
-	void create(Entity* parent)
+	void create(Entity* parent, const Vec2f& p)
 	{
-		e = Entity::create();
-		ce = cElement::create();
-		ce->set_width(64.f);
-		ce->set_height(64.f);
-		ce->set_pivotx(0.5f);
-		ce->set_pivoty(0.5f);
-		e->add_component(ce);
-		ci = cImage::create();
-		ci->set_auto_size(false);
-		e->add_component(ci);
-		parent->add_child(e);
-
-		set_pos(Vec2f(32.f, 0.f));
+		Sprite::create(parent, p, Vec2f(0.5f));
 	}
 
 	void set_frames(graphics::ImageAtlas* atlas, uint atlas_id, const std::vector<std::string>& names)
@@ -139,9 +128,13 @@ struct Animation : Sprite
 	}
 };
 
-struct Character : Sprite
+struct Monster : Sprite
 {
-
+	void create(const Vec2f& p)
+	{
+		Sprite::create(map.e, p, Vec2f(0.5f));
+		ci->set_src("main.slime");
+	}
 };
 
 struct Player : Sprite
@@ -155,23 +148,11 @@ struct Player : Sprite
 
 	void create()
 	{
-		e = Entity::create();
-		ce = cElement::create();
-		ce->set_width(64.f);
-		ce->set_height(64.f);
-		ce->set_pivotx(0.5f);
-		ce->set_pivoty(0.5f);
-		e->add_component(ce);
-		auto ci = cImage::create();
-		ci->set_src("character.main");
-		ci->set_auto_size(false);
-		e->add_component(ci);
-		map.e->add_child(e);
+		Sprite::create(map.e, Vec2f(100.f, 200.f), Vec2f(0.5f));
+		ci->set_src("main.character");
 
-		set_pos(Vec2f(100.f, 200.f));
-
-		ani_smash.create(e);
-		ani_smash.set_frames(atlas_character, atlas_character_id, { "smash1", "smash2", "smash3" });
+		ani_smash.create(e, Vec2f(32.f, 0.f));
+		ani_smash.set_frames(atlas_main, atlas_main_id, { "smash1", "smash2", "smash3" });
 	}
 
 	void update()
@@ -222,8 +203,8 @@ struct MainWindow : GraphicsWindow
 
 		s_element_renderer->set_always_update(true);
 
-		atlas_character = graphics::ImageAtlas::create(g_app.graphics_device, L"../art/character.atlas");
-		atlas_character_id = canvas->set_resource(-1, atlas_character, "character");
+		atlas_main = graphics::ImageAtlas::create(g_app.graphics_device, L"../art/main.atlas");
+		atlas_main_id = canvas->set_resource(-1, atlas_main, "main");
 	}
 
 	void on_frame() override
@@ -245,8 +226,14 @@ int main(int argc, char** args)
 	map.create();
 
 	Sprite s1, s2;
-	s1.create(Vec2f(100.f));
-	s2.create(Vec2f(200.f));
+	s1.create(map.e, Vec2f(100.f));
+	s1.ce->set_fill_color(Vec4c(255, 0, 0, 255));
+	s2.create(map.e, Vec2f(200.f));
+	s2.ce->set_fill_color(Vec4c(255, 0, 0, 255));
+
+	Monster m1;
+	m1.create(Vec2f(300.f));
+
 	player.create();
 
 	map.update_view();
