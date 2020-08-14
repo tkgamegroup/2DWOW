@@ -1,5 +1,7 @@
 #include <flame/utils/app.h>
+#include <flame/universe/components/text.h>
 #include <flame/universe/components/image.h>
+#include <flame/universe/components/tile_map.h>
 
 using namespace flame;
 
@@ -10,22 +12,61 @@ Entity* root;
 
 graphics::ImageAtlas* atlas_main;
 uint atlas_main_id;
+int grass_id;
+int stone_id;
+
+cText* tip;
 
 struct Map
 {
+	inline static const auto cx = 100;
+	inline static const auto cy = 100;
+
+	int cells[cy][cx];
+
 	Entity* e;
 	cElement* ce;
+	cTileMap* ct;
 
 	void create()
 	{
+		for (auto i = 0; i < cy; i++)
+		{
+			for (auto j = 0; j < cx; j++)
+				cells[i][j] = -1;
+		}
+
 		e = Entity::create();
 		ce = cElement::create();
-		ce->set_width(10000.f);
-		ce->set_height(10000.f);
+		ce->set_width(64.f * cx);
+		ce->set_height(64.f * cy);
 		ce->set_border(1.f);
 		ce->set_border_color(Vec4c(255));
 		e->add_component(ce);
+		ct = cTileMap::create();
+		ct->set_res_id(atlas_main_id);
+		ct->set_cell_count(Vec2u(cx, cy));
+		ct->set_cell_size(Vec2f(64.f));
+		for (auto i = 0; i < cy; i++)
+		{
+			for (auto j = 0; j < cx; j++)
+				set_cell(Vec2u(j, i), (rand() % 100) >= 5 ? grass_id : stone_id);
+		}
+		ct->set_clipping(true);
+		e->add_component(ct);
 		root->add_child(e);
+	}
+
+	int get_cell(const Vec2u& idx)
+	{
+		return cells[idx.y()][idx.x()];
+	}
+
+	void set_cell(const Vec2u& idx, int t)
+	{
+		cells[idx.y()][idx.x()] = t;
+
+		ct->set_cell(idx, t, Vec4c(255));
 	}
 
 	void update_view();
@@ -110,20 +151,22 @@ struct Animation : Sprite
 	void play()
 	{
 		if (frame == -1)
-			frame = 0;
-	}
-
-	void advance()
-	{
-		if (frame != -1)
 		{
-			if (frame == frames.size())
-			{
-				frame = -1;
-				ci->set_tile_id(-1);
-			}
-			else
-				ci->set_tile_id(frames[frame++]);
+			frame = 0;
+			looper().add_event([](Capture& c) {
+				auto thiz = c.thiz<Animation>();
+				if (thiz->frame == thiz->frames.size())
+				{
+					thiz->frame = -1;
+					thiz->ci->set_tile_id(-1);
+				}
+				else
+				{
+					thiz->ci->set_tile_id(thiz->frames[thiz->frame]);
+					thiz->frame++;
+					c._current = INVALID_POINTER;
+				}
+			}, Capture().set_thiz(this));
 		}
 	}
 };
@@ -148,7 +191,7 @@ struct Player : Sprite
 
 	void create()
 	{
-		Sprite::create(map.e, Vec2f(100.f, 200.f), Vec2f(0.5f));
+		Sprite::create(map.e, Vec2f(64.f) * 50.f, Vec2f(0.5f));
 		ci->set_src("main.character");
 
 		ani_smash.create(e, Vec2f(32.f, 0.f));
@@ -179,9 +222,43 @@ struct Player : Sprite
 			dir += Vec2f(cos(rad), sin(rad));
 		}
 		if (dir != 0.f)
-			add_pos(normalize(dir) * 3.f);
-
-		ani_smash.advance();
+		{
+			dir = normalize(dir) * 3.f;
+			auto idx = Vec2u(pos / 64.f);
+			std::vector<Vec2u> occluders;
+			if (idx.x() > 0)
+				occluders.push_back(Vec2u(idx.x() - 1, idx.y()));
+			if (idx.x() < Map::cx - 1)
+				occluders.push_back(Vec2u(idx.x() + 1, idx.y()));
+			if (idx.y() > 0)
+				occluders.push_back(Vec2u(idx.x(), idx.y() - 1));
+			if (idx.y() < Map::cy - 1)
+				occluders.push_back(Vec2u(idx.x(), idx.y() + 1));
+			if (idx.x() > 0 && idx.y() > 0)
+				occluders.push_back(Vec2u(idx.x() - 1, idx.y() - 1));
+			if (idx.x() > 0 && idx.y() < Map::cy - 1)
+				occluders.push_back(Vec2u(idx.x() - 1, idx.y() + 1));
+			if (idx.x() < Map::cx - 1 && idx.y() > 0)
+				occluders.push_back(Vec2u(idx.x() + 1, idx.y() - 1));
+			if (idx.x() < Map::cx - 1 && idx.y() < Map::cy - 1)
+				occluders.push_back(Vec2u(idx.x() + 1, idx.y() + 1));
+			const auto r = 30.f;
+			const auto r_sq = r * r;
+			auto p = pos + dir;
+			for (auto& o : occluders)
+			{
+				if (map.get_cell(o) != grass_id)
+				{
+					auto LT = Vec2f(o) * 64.f;
+					auto RB = Vec2f(o + 1U) * 64.f;
+					auto c = clamp(p, LT, RB);
+					auto d_sq = distance_square(p, c);
+					if (d_sq < r_sq)
+						p += normalize(p - c) * (r - sqrt(d_sq));
+				}
+			}
+			set_pos(p);
+		}
 	}
 }player;
 
@@ -197,7 +274,7 @@ void Map::update_view()
 struct MainWindow : GraphicsWindow
 {
 	MainWindow() :
-		GraphicsWindow(&g_app, true, true, "", Vec2u(1280, 720), WindowFrame)
+		GraphicsWindow(&g_app, true, true, "", Vec2u(640), WindowFrame)
 	{
 		window->set_cursor(CursorNone);
 
@@ -205,6 +282,8 @@ struct MainWindow : GraphicsWindow
 
 		atlas_main = graphics::ImageAtlas::create(g_app.graphics_device, L"../art/main.atlas");
 		atlas_main_id = canvas->set_resource(-1, atlas_main, "main");
+		grass_id = atlas_main->find_tile("grass")->get_index();
+		stone_id = atlas_main->find_tile("stone")->get_index();
 	}
 
 	void on_frame() override
@@ -212,6 +291,8 @@ struct MainWindow : GraphicsWindow
 		player.update();
 
 		map.update_view();
+
+		tip->set_text((to_wstring(player.pos) + L"\n" + to_wstring(Vec2u(player.pos / 64.f))).c_str());
 	}
 };
 
@@ -225,14 +306,8 @@ int main(int argc, char** args)
 
 	map.create();
 
-	Sprite s1, s2;
-	s1.create(map.e, Vec2f(100.f));
-	s1.ce->set_fill_color(Vec4c(255, 0, 0, 255));
-	s2.create(map.e, Vec2f(200.f));
-	s2.ce->set_fill_color(Vec4c(255, 0, 0, 255));
-
 	Monster m1;
-	m1.create(Vec2f(300.f));
+	m1.create(Vec2f(64.f) * 48.f);
 
 	player.create();
 
@@ -284,6 +359,15 @@ int main(int argc, char** args)
 	cer->add_mouse_left_down_listener([](Capture&, const Vec2i& pos) {
 		player.ani_smash.play();
 	}, Capture());
+
+	{
+		auto e = Entity::create();
+		e->add_component(cElement::create());
+		tip = cText::create();
+		tip->set_color(Vec4c(255));
+		e->add_component(tip);
+		root->add_child(e);
+	}
 
 	g_app.run();
 
